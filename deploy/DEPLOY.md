@@ -33,29 +33,30 @@ Until deployed, the demo runs locally: `docker compose up --build -d`, then `mak
 | Postgres | Neon free tier | Two schemas: `public` for orders, `gateway` for audit |
 | Kafka | not deployed | The direct audit sink replaces it; the README says so rather than implying a broker is running. Note the dead-letter topic and the Kafka-failure fallback only apply to the Kafka sink — with `AUDIT_SINK=direct` a Postgres outage fails the audit write outright, which is the trade a single small host buys |
 
-## Runbook (once an account exists)
+## Runbook
+
+Two prerequisites, both in a browser:
+
+1. `fly auth login` — and the Fly account needs a **confirmed payment method**, or every
+   API call fails with the account locked.
+2. Copy the Neon connection string: Neon console → project `agentbridge` → Connect → copy
+   the URI.
+
+Then one command:
 
 ```bash
-brew install flyctl
-fly auth login                        # browser; Rishabh does this
-fly apps create agentbridge-orders
-fly apps create agentbridge-gateway
-
-# Neon: create a project, then one connection string per service
-fly secrets set -a agentbridge-orders \
-  ORDERS_DB_URL='jdbc:postgresql://<host>/<db>?sslmode=require' \
-  ORDERS_DB_USER='<user>' ORDERS_DB_PASSWORD='<password>'
-fly secrets set -a agentbridge-gateway \
-  GATEWAY_DB_URL='jdbc:postgresql://<host>/<db>?sslmode=require' \
-  GATEWAY_DB_USER='<user>' GATEWAY_DB_PASSWORD='<password>'
-
-fly deploy -c deploy/fly/orders.fly.toml
-fly deploy -c deploy/fly/gateway.fly.toml
-
-curl https://agentbridge-gateway.fly.dev/api/v1/info
+./scripts/deploy_fly.sh
 ```
 
-Flyway creates the `gateway` schema on first boot; the orders schema migrates the same way.
+It reads the connection string from the clipboard (so the password is never pasted into a
+chat, a file or a log), creates both apps, generates the admin and guest API keys into the
+git-ignored `deploy/.generated-keys.env`, stages every secret, deploys the upstream and then
+the gateway, and finally calls `/api/v1/info` and lists the tools the guest key can see.
+
+Flyway creates the `gateway` schema on first boot; the orders tables migrate the same way,
+both against the same Neon database.
+
+Re-running it is safe: existing apps are reused and existing keys are kept.
 
 ## Things that will bite
 
