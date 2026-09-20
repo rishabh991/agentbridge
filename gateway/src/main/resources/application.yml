@@ -1,17 +1,72 @@
 spring:
   application:
     name: agentbridge-gateway
+  datasource:
+    url: ${GATEWAY_DB_URL:jdbc:postgresql://localhost:5432/agentbridge}
+    username: ${GATEWAY_DB_USER:agentbridge}
+    password: ${GATEWAY_DB_PASSWORD:agentbridge}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        default_schema: gateway
+  flyway:
+    enabled: true
+    schemas: gateway
+    default-schema: gateway
+    create-schemas: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: false
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      auto-offset-reset: earliest
+      properties:
+        # The consumer decides the payload type; a type header from a producer is
+        # ignored rather than trusted.
+        spring.json.use.type.headers: false
+        spring.json.value.default.type: io.agentbridge.gateway.audit.AuditEvent
+        spring.json.trusted.packages: io.agentbridge.gateway.audit
+  ai:
+    mcp:
+      server:
+        enabled: true
+        name: agentbridge
+        version: 0.2.0
+        type: SYNC
+        protocol: STREAMABLE
+        instructions: >
+          Tools generated from the OpenAPI specs of the services AgentBridge fronts.
+          Mutating tools carry an idempotency key derived from their arguments, so an
+          identical retry is safe. Every call is audited.
+        streamable-http:
+          mcp-endpoint: /mcp
 
 server:
   port: ${PORT:8080}
 
 agentbridge:
-  version: 0.1.0-SNAPSHOT
+  version: 0.2.0-SNAPSHOT
   upstreams:
     - name: orders
       base-url: ${ORDERS_BASE_URL:http://localhost:8081}
       openapi-path: /v3/api-docs
       health-path: /actuator/health
+  audit:
+    # kafka (default) publishes to the topic and projects it back into Postgres;
+    # direct writes straight to Postgres for hosts that cannot run a broker.
+    sink: ${AUDIT_SINK:kafka}
+    topic: agentbridge.audit
+    consumer-group: agentbridge-audit-projector
+    # Arguments are recorded as field names only unless this is turned on.
+    log-arguments: ${AUDIT_LOG_ARGUMENTS:false}
 
 management:
   endpoints:

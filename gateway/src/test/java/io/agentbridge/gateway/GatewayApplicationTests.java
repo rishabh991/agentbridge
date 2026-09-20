@@ -28,8 +28,10 @@ class GatewayApplicationTests {
         mockMvc.perform(get("/api/v1/info"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("AgentBridge"))
-                .andExpect(jsonPath("$.milestone").value("M0"))
-                .andExpect(jsonPath("$.capabilities.openapiToMcpTools").value(false));
+                .andExpect(jsonPath("$.milestone").value("M1"))
+                .andExpect(jsonPath("$.capabilities.openapiToMcpTools").value(true))
+                .andExpect(jsonPath("$.capabilities.auditStream").value(true))
+                .andExpect(jsonPath("$.capabilities.rateLimits").value(false));
     }
 
     @Test

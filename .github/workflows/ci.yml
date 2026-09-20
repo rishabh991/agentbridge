@@ -44,8 +44,11 @@ jobs:
           docker compose logs
           exit 1
 
-      - name: Smoke test
+      - name: Smoke test (upstream)
         run: ./scripts/smoke.sh
+
+      - name: Smoke test (MCP protocol + audit trail)
+        run: ./scripts/mcp_smoke.sh
 
       - name: Dump logs on failure
         if: failure()

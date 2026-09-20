@@ -20,7 +20,7 @@ class CatalogController {
     }
 
     @GetMapping("/items")
-    @Operation(summary = "List catalogue items", description = "Read-only. Safe for a guest key.")
+    @Operation(operationId = "listCatalogItems", summary = "List catalogue items", description = "Read-only. Safe for a guest key.")
     List<Dtos.CatalogItem> items() {
         return catalog.items();
     }

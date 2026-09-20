@@ -70,7 +70,11 @@ services:
     environment:
       PORT: 8080
       ORDERS_BASE_URL: http://orders-service:8081
+      GATEWAY_DB_URL: jdbc:postgresql://postgres:5432/agentbridge
+      GATEWAY_DB_USER: agentbridge
+      GATEWAY_DB_PASSWORD: ${POSTGRES_PASSWORD:-agentbridge}
       KAFKA_BOOTSTRAP_SERVERS: redpanda:29092
+      AUDIT_SINK: ${AUDIT_SINK:-kafka}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ports:
       - "8080:8080"
@@ -78,7 +82,9 @@ services:
       orders-service:
         condition: service_healthy
       redpanda:
-        condition: service_started
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health/liveness || exit 1"]
       interval: 10s

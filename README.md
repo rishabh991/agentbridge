@@ -4,7 +4,7 @@
 
 **A governed MCP gateway for existing Spring services.** Point it at an OpenAPI spec and get auth-scoped, rate-limited, audited, cost-tracked tools that Claude, Bedrock or a local model can call — without rewriting the service underneath.
 
-> **Status: M0 — skeleton.** The stack builds, boots and talks to itself end to end. Tool generation, governance and the agent side land in M1–M4; the roadmap below says exactly what is and is not wired, and `GET /api/v1/info` reports the same thing at runtime.
+> **Status: M1 — tools are live.** Point the gateway at an OpenAPI spec and it serves the operations as MCP tools, calls them on the upstream, and audits every call through Kafka into Postgres. Governance (API keys, scopes, rate limits), the UI and the Python agent side land in M2–M4; the roadmap below says exactly what is and is not wired, and `GET /api/v1/info` reports the same thing at runtime.
 
 ---
 
@@ -60,10 +60,10 @@ flowchart LR
     reg -.->|imports /v3/api-docs| orders
 
     classDef planned stroke-dasharray: 5 5;
-    class mcp,reg,pol,safe,meter,aud,ui,evals,kafka planned;
+    class pol,meter,ui,evals planned;
 ```
 
-Dashed = not implemented yet (M1+). Solid today: the gateway, the orders upstream, Postgres, and the wiring between them.
+Dashed = not implemented yet (M2+). Solid today: the MCP server, the OpenAPI tool registry, idempotency and upstream calls, the audit stream through Kafka into Postgres, and the orders upstream behind it.
 
 ## Quickstart
 
@@ -72,23 +72,64 @@ Requires Docker (or Colima) and nothing else — the JDK and Maven live inside t
 ```bash
 git clone https://github.com/rishabh991/agentbridge.git
 cd agentbridge
-cp .env.example .env          # optional; only needed from M1 for LLM calls
-docker compose up --build -d  # postgres + redpanda + orders-service + gateway
-./scripts/smoke.sh            # catalogue → order → idempotent replay → payment
+cp .env.example .env           # optional; only needed from M3 for LLM calls
+docker compose up --build -d   # postgres + redpanda + orders-service + gateway
+./scripts/smoke.sh             # upstream: catalogue → order → idempotent replay → payment
+./scripts/mcp_smoke.sh         # gateway: MCP initialize → tools/list → tools/call, twice
 ```
 
 First build pulls the Maven and Temurin images and takes a few minutes; after that it is cached.
 
 | URL | What |
 |---|---|
-| http://localhost:8080/api/v1/info | Gateway version and honest capability flags |
+| http://localhost:8080/mcp | **The MCP endpoint** (streamable HTTP) — point an MCP client here |
+| http://localhost:8080/api/v1/tools | The generated tool surface, with the routing detail behind each tool |
+| http://localhost:8080/api/v1/audit | The audit trail, newest first |
+| http://localhost:8080/api/v1/info | Gateway version, tool count and honest capability flags |
 | http://localhost:8080/api/v1/upstreams | Declared upstreams and their reachability |
-| http://localhost:8080/actuator/health | Gateway health, including upstream checks |
-| http://localhost:8081/swagger-ui.html | The upstream API that M1 turns into MCP tools |
+| http://localhost:8081/swagger-ui.html | The upstream API the tools are generated from |
 | http://localhost:8081/v3/api-docs | The OpenAPI spec itself |
-| http://localhost:8081/api/catalog/items | Read-only catalogue (a safe guest tool later) |
 
 Tear down with `docker compose down`, or `docker compose down -v` to drop the database volume too.
+
+## What M1 actually does
+
+**One OpenAPI document in, six governed MCP tools out.** No tool is hand-written; change the upstream's spec and the tool surface follows on the next refresh (`POST /api/v1/tools/refresh`).
+
+```
+orders_listCatalogItems   GET  /api/catalog/items          read-only
+orders_listOrders         GET  /api/orders                 read-only
+orders_getOrder           GET  /api/orders/{id}            read-only
+orders_listPayments       GET  /api/orders/{id}/payments   read-only
+orders_createOrder        POST /api/orders                 mutating → idempotency key
+orders_capturePayment     POST /api/orders/{id}/payments   mutating → idempotency key
+```
+
+Three decisions worth the words:
+
+- **Arguments are one flat object.** Path, query and JSON body fields all become top-level tool arguments. Models handle a flat object far better than `{path: {...}, body: {...}}`, and routing is the gateway's business, not the model's.
+- **Mutating tools carry a derived idempotency key.** The key is a hash of the tool name and the canonical (field-sorted) arguments, so a model that retries the identical call after a timeout replays the original order rather than placing a second one. `scripts/mcp_smoke.sh` calls `orders_createOrder` twice and asserts both calls return the same order id and share one key.
+- **Upstream errors come back as data.** A 409 is returned to the model as `{"error":"upstream_error","upstream":{"code":"already_paid",...}}`. A model told "the order is already paid" can recover; a transport exception teaches it nothing.
+
+### Connecting a client
+
+The MCP endpoint is streamable HTTP at `http://localhost:8080/mcp`. For Claude Code:
+
+```bash
+claude mcp add --transport http agentbridge http://localhost:8080/mcp
+```
+
+Any MCP client works — `scripts/mcp_smoke.sh` is a 60-line `curl` client if you want to see the raw protocol.
+
+> **No auth yet.** M1 has no API keys and no scopes: anything that can reach the endpoint can call every tool, including the mutating ones. That is what M2 is for. Do not expose this build to a network you do not control.
+
+### Every call is audited
+
+Each tool call produces exactly one audit event — success, upstream error or gateway error alike — carrying the tool, upstream, outcome, HTTP status, latency and idempotency key. Events go to Kafka (`agentbridge.audit`), and a projector consumes them back into Postgres so `GET /api/v1/audit` can answer "what did the agent do".
+
+**Arguments are redacted by default**: the audit row records which fields were sent, never their values. An audit log that quietly accumulates customer identifiers and payment amounts is a liability, not a control — M2 adds a per-tool allowlist for fields that may be logged in full.
+
+If the host cannot spare memory for a broker, set `AUDIT_SINK=direct` and the gateway writes to Postgres itself. Same table, same rows, one less moving part — the README promised that fallback at M0 and it is real.
 
 ## The upstream is not a toy
 
@@ -136,8 +177,8 @@ docker-compose.yml  The whole local stack
 | Milestone | Scope | Status |
 |---|---|---|
 | **M0** | Repo, compose stack, realistic upstream, architecture docs | ✅ done |
-| **M1** | OpenAPI → MCP tools; call them from Claude via Spring AI; audit every call to Kafka + Postgres | next |
-| **M2** | API keys, per-tool RBAC scopes, per-key rate limits, idempotency enforcement, circuit breakers, dead-letter for failed audits | planned |
+| **M1** | OpenAPI → MCP tools over streamable HTTP; derived idempotency keys; every call audited to Kafka + Postgres | ✅ done |
+| **M2** | API keys, per-tool RBAC scopes, per-key rate limits, circuit breakers, dead-letter for failed audits, per-tool argument allowlist | next |
 | **M3** | Chat UI, live tool-call and audit stream over SSE, per-key/tool/provider cost tracking | planned |
 | **M4** | Python agents (LangGraph + Claude Agent SDK) against the gateway, pytest evals harness, evals dashboard | planned |
 | **M5** | End-to-end OTel tracing, Testcontainers integration tests, k8s manifests + HPA, published load-test numbers | planned |
@@ -148,7 +189,8 @@ docker-compose.yml  The whole local stack
 - **Declared, not discovered.** Upstreams are listed in configuration. An agent gateway that auto-discovers services is an agent gateway that will one day expose one you did not mean to.
 - **The capability endpoint never lies.** `/api/v1/info` is generated from what is wired, so the demo cannot drift ahead of the code.
 - **Kafka from day one, Postgres as the fallback.** The audit stream is a stream. If the demo host runs out of memory, the README will say so and the outbox table takes over — not silently, in writing.
-- **Stack choices are the boring ones on purpose:** Spring Boot 3.5, Java 21, Flyway, Resilience4j, OpenTelemetry. This is meant to look like something you could drop into an existing estate on a Monday.
+- **Stack choices are the boring ones on purpose:** Spring Boot 3.5, Spring AI 1.1, Java 21, Flyway, Resilience4j, OpenTelemetry. Spring AI 2.0 requires Spring Boot 4; a gateway whose selling point is fronting *existing* services should not demand that its host upgrade first. The Boot 4 / Spring AI 2 path is an M5 item, not a prerequisite.
+- **The tool surface is generated, never hand-maintained.** A hand-written tool list drifts from the API it fronts, and the drift is silent. Generating from the spec means the spec is the contract for agents too.
 
 ## Who built this
 

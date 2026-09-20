@@ -23,7 +23,7 @@ class OrderController {
     }
 
     @PostMapping
-    @Operation(summary = "Create an order",
+    @Operation(operationId = "createOrder", summary = "Create an order",
             description = "Mutating. Send an Idempotency-Key so a retried call does not create a second order.")
     ResponseEntity<Dtos.OrderResponse> create(
             @Valid @RequestBody Dtos.CreateOrderRequest request,
@@ -34,13 +34,13 @@ class OrderController {
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Get one order by id")
+    @Operation(operationId = "getOrder", summary = "Get one order by id")
     Dtos.OrderResponse get(@PathVariable UUID id) {
         return Dtos.OrderResponse.of(service.getOrder(id));
     }
 
     @GetMapping
-    @Operation(summary = "List orders, optionally filtered by customer or status")
+    @Operation(operationId = "listOrders", summary = "List orders, optionally filtered by customer or status")
     List<Dtos.OrderResponse> list(
             @RequestParam(required = false) String customerId,
             @RequestParam(required = false) Order.Status status) {
@@ -48,7 +48,7 @@ class OrderController {
     }
 
     @PostMapping("/{id}/payments")
-    @Operation(summary = "Capture payment for an order",
+    @Operation(operationId = "capturePayment", summary = "Capture payment for an order",
             description = "Mutating and money-moving. Requires an Idempotency-Key in production profiles.")
     ResponseEntity<Dtos.PaymentResponse> pay(
             @PathVariable UUID id,
@@ -59,7 +59,7 @@ class OrderController {
     }
 
     @GetMapping("/{id}/payments")
-    @Operation(summary = "List payments captured against an order")
+    @Operation(operationId = "listPayments", summary = "List payments captured against an order")
     List<Dtos.PaymentResponse> payments(@PathVariable UUID id) {
         return service.paymentsOf(id).stream().map(Dtos.PaymentResponse::of).toList();
     }

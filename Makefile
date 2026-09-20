@@ -23,8 +23,12 @@ down: ## Stop the stack (add ARGS=-v to drop the database volume)
 logs: ## Tail logs from all services
 	docker compose logs -f
 
-smoke: ## Hit every M0 endpoint against a running stack
+smoke: ## Run both smoke tests against a running stack
 	./scripts/smoke.sh
+	./scripts/mcp_smoke.sh
+
+mcp: ## Drive the MCP endpoint end to end (initialize, tools/list, tools/call)
+	./scripts/mcp_smoke.sh
 
 clean: ## Remove build output
 	mvn -B -ntp clean

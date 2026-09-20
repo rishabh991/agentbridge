@@ -1,0 +1,31 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:gateway;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        default_schema: ""
+  flyway:
+    enabled: false
+  ai:
+    mcp:
+      server:
+        enabled: false
+
+agentbridge:
+  version: test
+  upstreams:
+    - name: orders
+      base-url: http://orders.test
+      openapi-path: /v3/api-docs
+      health-path: /actuator/health
+  audit:
+    sink: direct
+    topic: agentbridge.audit.test
+    consumer-group: test
+    log-arguments: false
