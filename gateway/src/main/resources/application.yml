@@ -1,0 +1,34 @@
+spring:
+  application:
+    name: agentbridge-gateway
+
+server:
+  port: ${PORT:8080}
+
+agentbridge:
+  version: 0.1.0-SNAPSHOT
+  upstreams:
+    - name: orders
+      base-url: ${ORDERS_BASE_URL:http://localhost:8081}
+      openapi-path: /v3/api-docs
+      health-path: /actuator/health
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+
+logging:
+  level:
+    io.agentbridge: INFO

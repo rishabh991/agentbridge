@@ -1,0 +1,16 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+.mvn/timing.properties
+
+.env
+*.log
+
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Python (M4)
+.venv/
+__pycache__/
+.pytest_cache/
