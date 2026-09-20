@@ -1,0 +1,78 @@
+# Render blueprint: the free-tier deployment of AgentBridge.
+#
+# Two web services built from the one Dockerfile — Render turns a service's
+# environment variables into Docker build arguments, so MODULE selects which module
+# each image builds.
+#
+# Database is Neon (external), not Render Postgres: Render's free database expires
+# after 90 days, and a demo that dies on a timer is worse than no demo.
+#
+# Free-plan facts this file is shaped around:
+#   * services sleep after 15 minutes idle and take ~30-60s to wake, plus JVM start;
+#   * a free service can SEND private-network requests but cannot RECEIVE them, so
+#     the gateway reaches the upstream over its public URL — which is why the upstream
+#     requires UPSTREAM_TOKEN here and does not locally.
+#   * no broker, so AUDIT_SINK=direct writes audit rows straight to Postgres.
+services:
+  - name: agentbridge-orders
+    type: web
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /actuator/health/liveness
+    autoDeployTrigger: commit
+    envVars:
+      - key: MODULE
+        value: orders-service
+      - key: PORT
+        value: 8081
+      - key: JAVA_OPTS
+        value: -XX:MaxRAMPercentage=70 -XX:+UseSerialGC -Xss512k
+      # Shared secret with the gateway. Generated once by Render and copied into the
+      # gateway service below, so the public upstream refuses everything else.
+      - key: UPSTREAM_TOKEN
+        generateValue: true
+      - key: ORDERS_DB_URL
+        sync: false
+      - key: ORDERS_DB_USER
+        sync: false
+      - key: ORDERS_DB_PASSWORD
+        sync: false
+
+  - name: agentbridge-gateway
+    type: web
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /actuator/health/liveness
+    autoDeployTrigger: commit
+    envVars:
+      - key: MODULE
+        value: gateway
+      - key: PORT
+        value: 8080
+      - key: JAVA_OPTS
+        value: -XX:MaxRAMPercentage=70 -XX:+UseSerialGC -Xss512k
+      - key: ORDERS_BASE_URL
+        value: https://agentbridge-orders.onrender.com
+      - key: UPSTREAM_TOKEN
+        fromService:
+          name: agentbridge-orders
+          type: web
+          envVarKey: UPSTREAM_TOKEN
+      - key: AUDIT_SINK
+        value: direct
+      - key: AGENTBRIDGE_ADMIN_KEY
+        generateValue: true
+      - key: AGENTBRIDGE_GUEST_KEY
+        generateValue: true
+      - key: GATEWAY_DB_URL
+        sync: false
+      - key: GATEWAY_DB_USER
+        sync: false
+      - key: GATEWAY_DB_PASSWORD
+        sync: false

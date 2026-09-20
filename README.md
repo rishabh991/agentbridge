@@ -224,11 +224,18 @@ docker-compose.yml  The whole local stack
 
 ## Hosting
 
-Not hosted yet. M2 removed the blocker — the gateway now has keys, scopes and rate limits,
-so it is safe to expose — but deploying needs a Fly.io account and a Neon database that do
-not exist yet. [`deploy/DEPLOY.md`](deploy/DEPLOY.md) has the manifests, the runbook and an
-honest list of what will bite; the public demo lands with a read-only guest key and a hard
-daily cost cap.
+Not hosted yet; `render.yaml` deploys it to Render's free tier, and
+[`deploy/DEPLOY.md`](deploy/DEPLOY.md) has the runbook and an honest list of what the free
+plan forces. Two of those constraints changed the code rather than being worked around:
+
+- A free Render service cannot *receive* private-network traffic, so the gateway must call
+  the upstream over its public URL. The upstream therefore requires a shared
+  `X-Upstream-Token` whenever one is configured — an order and payment API open to the
+  internet would make a nonsense of a project about governed access. Locally, on compose's
+  private network, no token is set and the filter does not register.
+- Free services sleep when idle, so the gateway can boot while its upstream is still
+  asleep. The tool registry retries the OpenAPI import every 60s while it holds no tools,
+  rather than serving an empty tool list until somebody notices.
 
 ## Roadmap
 

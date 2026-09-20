@@ -7,6 +7,7 @@ import io.agentbridge.gateway.policy.ToolPolicy;
 import io.agentbridge.gateway.policy.UpstreamCircuitBreakers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -54,15 +55,19 @@ public class ToolRegistry {
         var imported = new ArrayList<UpstreamToolCallback>();
         for (GatewayProperties.Upstream upstream : properties.upstreams()) {
             try {
-                var document = restClient.get().uri(upstream.openapiUrl()).retrieve().body(String.class);
+                var request = restClient.get().uri(upstream.openapiUrl());
+                if (upstream.hasAuthToken()) {
+                    request.header("X-Upstream-Token", upstream.authToken());
+                }
+                var document = request.retrieve().body(String.class);
                 if (document == null || document.isBlank()) {
                     log.warn("upstream {} returned an empty OpenAPI document", upstream.name());
                     continue;
                 }
                 var tools = factory.toolsFrom(upstream.name(), document);
                 tools.forEach(tool -> imported.add(
-                        new UpstreamToolCallback(tool, upstream.baseUrl(), restClient, objectMapper, audit,
-                                policy, breakers)));
+                        new UpstreamToolCallback(tool, upstream.baseUrl(), upstream.authToken(), restClient,
+                                objectMapper, audit, policy, breakers)));
                 log.info("registered {} tools from upstream {}", tools.size(), upstream.name());
             } catch (Exception e) {
                 log.error("could not import tools from upstream {} at {}: {}",
@@ -71,6 +76,23 @@ public class ToolRegistry {
         }
         this.callbacks = List.copyOf(imported);
         return this.callbacks;
+    }
+
+    /**
+     * Keeps trying while the tool list is empty.
+     *
+     * <p>On a host that suspends idle services, the upstream is often asleep when the
+     * gateway boots, so the first import returns nothing. Without this the gateway
+     * would serve an empty tool list until someone noticed and called refresh — the
+     * failure would be silent, and an MCP client would simply see a server with no
+     * tools rather than an error.
+     */
+    @Scheduled(initialDelayString = "PT20S", fixedDelayString = "PT60S")
+    void refreshWhileEmpty() {
+        if (callbacks.isEmpty() && !properties.upstreams().isEmpty()) {
+            log.info("no tools registered yet; retrying the upstream import");
+            refresh();
+        }
     }
 
     public List<UpstreamToolCallback> callbacks() {

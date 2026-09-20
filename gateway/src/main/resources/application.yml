@@ -60,6 +60,9 @@ agentbridge:
       base-url: ${ORDERS_BASE_URL:http://localhost:8081}
       openapi-path: /v3/api-docs
       health-path: /actuator/health
+      # Sent as X-Upstream-Token. Needed where the upstream has a public address;
+      # empty on a private network such as local compose.
+      auth-token: ${UPSTREAM_TOKEN:}
   audit:
     # kafka (default) publishes to the topic and projects it back into Postgres;
     # direct writes straight to Postgres for hosts that cannot run a broker.

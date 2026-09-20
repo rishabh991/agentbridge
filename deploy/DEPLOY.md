@@ -1,8 +1,61 @@
 # Deploying AgentBridge
 
-**Status: not deployed.** The manifests in `deploy/fly/` are written from the Fly.io
-docs and have never been run — there is no Fly account yet. Treat them as a starting
-point, not a tested path.
+**Status: not deployed yet.** Two paths are prepared:
+
+- **Render free tier — the chosen one.** `render.yaml` in the repo root. $0, no card.
+- **Fly.io — ~$10/month.** `deploy/fly/` plus `scripts/deploy_fly.sh`. Kept because it is
+  the better experience if the demo ever earns the cost: no cold starts.
+
+Neither has been run end to end. The local stack that both are built from is verified on
+every commit by CI.
+
+## Render (the chosen path)
+
+### What Rishabh does
+
+1. Sign up at https://render.com with **Continue with GitHub** and authorise it for the
+   `agentbridge` repository. (Account creation and OAuth grants are his; Claude cannot do
+   either.)
+2. Have the Neon connection string on the clipboard: Neon console → project `agentbridge`
+   → Connect → copy the URI.
+
+### What the blueprint does
+
+New → Blueprint → pick the repo. Render reads `render.yaml` and creates two free web
+services in Singapore, generating `UPSTREAM_TOKEN`, `AGENTBRIDGE_ADMIN_KEY` and
+`AGENTBRIDGE_GUEST_KEY` itself. The six database variables are marked `sync: false`, so
+Render prompts for them — they are the only values typed by hand:
+
+| Variable | From the Neon URI `postgresql://USER:PASSWORD@HOST/DB?sslmode=require` |
+|---|---|
+| `ORDERS_DB_URL`, `GATEWAY_DB_URL` | `jdbc:postgresql://HOST/DB?sslmode=require` |
+| `ORDERS_DB_USER`, `GATEWAY_DB_USER` | `USER` |
+| `ORDERS_DB_PASSWORD`, `GATEWAY_DB_PASSWORD` | `PASSWORD` |
+
+Both services share one Neon database; the gateway's tables live in a `gateway` schema
+that Flyway creates on first boot, the orders tables in `public`.
+
+### What the free plan forces, and how the code answers it
+
+| Constraint | Answer |
+|---|---|
+| A free service can *send* private-network requests but not *receive* them, so the gateway must call the upstream's **public** URL | The upstream requires `X-Upstream-Token` whenever `UPSTREAM_TOKEN` is set. Render generates it and passes the same value to the gateway. An order and payment API open to the internet would make a nonsense of a project about governed access |
+| No broker | `AUDIT_SINK=direct` writes audit rows straight to Postgres. The dead-letter topic and the Kafka-failure fallback are Kafka-sink features, so on Render a Postgres outage fails the audit write outright — the trade a free host buys |
+| Services sleep after 15 min idle; ~30–60s to wake, plus JVM start | The tool registry retries the OpenAPI import every 60s while it holds no tools, so a gateway that woke before its upstream does not sit there serving an empty tool list |
+| 512 MB per service | `-XX:MaxRAMPercentage=70 -XX:+UseSerialGC -Xss512k`. If the gateway OOMs on boot, that is the first thing to revisit |
+| 750 instance-hours/month across free services | Two services that sleep when idle stay well inside it; two services pinned awake would not |
+
+### After it is up
+
+```bash
+curl https://agentbridge-gateway.onrender.com/api/v1/info      # no key needed
+```
+
+Take the generated guest key from the Render dashboard (gateway service → Environment) and
+put it in the README's connect snippet, so a visitor can point an MCP client at the demo
+without asking for anything.
+
+## Fly.io (the paid alternative)
 
 ## What is blocking it
 

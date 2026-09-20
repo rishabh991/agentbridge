@@ -50,6 +50,9 @@ services:
       ORDERS_DB_URL: jdbc:postgresql://postgres:5432/agentbridge
       ORDERS_DB_USER: agentbridge
       ORDERS_DB_PASSWORD: ${POSTGRES_PASSWORD:-agentbridge}
+      # Empty locally: compose is a private network. Set it to exercise the same
+      # gate the Render deployment runs behind.
+      UPSTREAM_TOKEN: ${UPSTREAM_TOKEN:-}
     ports:
       - "8081:8081"
     depends_on:
@@ -70,6 +73,7 @@ services:
     environment:
       PORT: 8080
       ORDERS_BASE_URL: http://orders-service:8081
+      UPSTREAM_TOKEN: ${UPSTREAM_TOKEN:-}
       GATEWAY_DB_URL: jdbc:postgresql://postgres:5432/agentbridge
       GATEWAY_DB_USER: agentbridge
       GATEWAY_DB_PASSWORD: ${POSTGRES_PASSWORD:-agentbridge}

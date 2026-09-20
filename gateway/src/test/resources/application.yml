@@ -24,6 +24,7 @@ agentbridge:
       base-url: http://orders.test
       openapi-path: /v3/api-docs
       health-path: /actuator/health
+      auth-token: ""
   audit:
     sink: direct
     topic: agentbridge.audit.test

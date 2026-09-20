@@ -15,7 +15,17 @@ public record GatewayProperties(List<Upstream> upstreams) {
             String name,
             String baseUrl,
             String openapiPath,
-            String healthPath) {
+            String healthPath,
+            /**
+             * Shared secret sent as X-Upstream-Token, for deployments where the
+             * upstream has a public address and must refuse everything that is not
+             * this gateway. Empty on a private network.
+             */
+            String authToken) {
+
+        public boolean hasAuthToken() {
+            return authToken != null && !authToken.isBlank();
+        }
 
         public String openapiUrl() {
             return baseUrl + (openapiPath == null ? "/v3/api-docs" : openapiPath);

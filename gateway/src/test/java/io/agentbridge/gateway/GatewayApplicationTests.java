@@ -50,7 +50,7 @@ class GatewayApplicationTests {
         var probe = context.getBean(UpstreamProbe.class);
 
         var status = probe.probe(new GatewayProperties.Upstream(
-                "nowhere", "http://127.0.0.1:9", "/v3/api-docs", "/actuator/health"));
+                "nowhere", "http://127.0.0.1:9", "/v3/api-docs", "/actuator/health", null));
 
         assertThat(status.reachable()).isFalse();
         assertThat(status.detail()).isNotBlank();

@@ -13,6 +13,12 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+orders:
+  # When set, every request must carry X-Upstream-Token. Left empty on a private
+  # network (local compose); set in any deployment where this service has a public
+  # address. See UpstreamTokenFilter.
+  upstream-token: ${UPSTREAM_TOKEN:}
+
 server:
   port: ${PORT:8081}
 

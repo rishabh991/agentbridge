@@ -45,6 +45,7 @@ public class UpstreamToolCallback implements ToolCallback {
 
     private final UpstreamTool tool;
     private final String baseUrl;
+    private final String upstreamToken;
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
     private final AuditService audit;
@@ -54,8 +55,15 @@ public class UpstreamToolCallback implements ToolCallback {
     public UpstreamToolCallback(UpstreamTool tool, String baseUrl, RestClient restClient,
                                 ObjectMapper objectMapper, AuditService audit,
                                 ToolPolicy policy, UpstreamCircuitBreakers breakers) {
+        this(tool, baseUrl, null, restClient, objectMapper, audit, policy, breakers);
+    }
+
+    public UpstreamToolCallback(UpstreamTool tool, String baseUrl, String upstreamToken, RestClient restClient,
+                                ObjectMapper objectMapper, AuditService audit,
+                                ToolPolicy policy, UpstreamCircuitBreakers breakers) {
         this.tool = tool;
         this.baseUrl = baseUrl;
+        this.upstreamToken = upstreamToken;
         this.restClient = restClient;
         this.objectMapper = objectMapper;
         this.audit = audit;
@@ -97,6 +105,9 @@ public class UpstreamToolCallback implements ToolCallback {
             var request = restClient.method(org.springframework.http.HttpMethod.valueOf(tool.method())).uri(uri);
             if (idempotencyKey != null) {
                 request.header("Idempotency-Key", idempotencyKey);
+            }
+            if (upstreamToken != null && !upstreamToken.isBlank()) {
+                request.header("X-Upstream-Token", upstreamToken);
             }
 
             var body = requestBody(arguments);
