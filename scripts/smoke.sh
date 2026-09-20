@@ -4,6 +4,9 @@ set -euo pipefail
 
 GATEWAY="${GATEWAY:-http://localhost:8080}"
 ORDERS="${ORDERS:-http://localhost:8081}"
+# Gateway views need a key from M2 onwards; /api/v1/info deliberately does not.
+ADMIN_KEY="${AGENTBRIDGE_ADMIN_KEY:-ab_local-admin-key}"
+AUTH="Authorization: Bearer $ADMIN_KEY"
 KEY="smoke-$(date +%s)"
 
 say() { printf '\n=== %s ===\n' "$1"; }
@@ -12,7 +15,12 @@ say "gateway info"
 curl -fsS "$GATEWAY/api/v1/info"; echo
 
 say "gateway view of upstreams"
-curl -fsS "$GATEWAY/api/v1/upstreams"; echo
+curl -fsS -H "$AUTH" "$GATEWAY/api/v1/upstreams"; echo
+
+say "the same view without a key is refused"
+CODE=$(curl -sS -o /dev/null -w '%{http_code}' "$GATEWAY/api/v1/upstreams")
+[[ "$CODE" == "401" ]] || { echo "FAIL: expected 401 without a key, got $CODE" >&2; exit 1; }
+echo "HTTP $CODE"
 
 say "catalogue"
 curl -fsS "$ORDERS/api/catalog/items"; echo
@@ -47,4 +55,4 @@ curl -fsS -X POST "$ORDERS/api/orders/$ORDER_ID/payments" \
 say "order is now PAID"
 curl -fsS "$ORDERS/api/orders/$ORDER_ID"; echo
 
-printf '\nM0 smoke passed.\n'
+printf '\nUpstream smoke passed.\n'
