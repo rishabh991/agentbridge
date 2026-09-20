@@ -1,5 +1,7 @@
 # AgentBridge
 
+[![ci](https://github.com/rishabh991/agentbridge/actions/workflows/ci.yml/badge.svg)](https://github.com/rishabh991/agentbridge/actions/workflows/ci.yml)
+
 **A governed MCP gateway for existing Spring services.** Point it at an OpenAPI spec and get auth-scoped, rate-limited, audited, cost-tracked tools that Claude, Bedrock or a local model can call — without rewriting the service underneath.
 
 > **Status: M0 — skeleton.** The stack builds, boots and talks to itself end to end. Tool generation, governance and the agent side land in M1–M4; the roadmap below says exactly what is and is not wired, and `GET /api/v1/info` reports the same thing at runtime.
@@ -68,7 +70,7 @@ Dashed = not implemented yet (M1+). Solid today: the gateway, the orders upstrea
 Requires Docker (or Colima) and nothing else — the JDK and Maven live inside the build image.
 
 ```bash
-git clone https://github.com/<user>/agentbridge.git
+git clone https://github.com/rishabh991/agentbridge.git
 cd agentbridge
 cp .env.example .env          # optional; only needed from M1 for LLM calls
 docker compose up --build -d  # postgres + redpanda + orders-service + gateway
