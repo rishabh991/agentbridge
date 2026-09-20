@@ -13,10 +13,10 @@ public class Order {
     @Id
     private UUID id;
 
-    @Column(name = "customer_id", nullable = false)
+    @Column(name = "customer_id", nullable = false, length = 128)
     private String customerId;
 
-    @Column(name = "sku", nullable = false)
+    @Column(name = "sku", nullable = false, length = 64)
     private String sku;
 
     @Column(nullable = false)

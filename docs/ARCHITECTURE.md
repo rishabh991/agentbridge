@@ -30,7 +30,7 @@ per-upstream isolation in, and M5 puts tracing across the hop.
 | Upstreams declared in config, never discovered | An auto-discovering agent gateway eventually exposes a service nobody meant to expose | A service registry with explicit opt-in labels exists |
 | Idempotency implemented in the upstream, enforced by the gateway | The invariant belongs with the data; the gateway's job is to guarantee a key is always sent | Never — this split is the point |
 | Redpanda rather than Kafka locally | One container, no ZooKeeper/KRaft ceremony, Kafka wire protocol | Demo host memory gets tight; then fall back to a Postgres outbox and say so in the README |
-| H2 for unit tests, Testcontainers later (M5) | Fast feedback now, fidelity before anyone depends on it | M5 |
+| H2 for unit tests, Testcontainers later (M5) | Fast feedback now, fidelity before anyone depends on it | M5 — and sooner if this bites again: H2 with `ddl-auto: create-drop` cannot see entity/migration drift, so an M0 `char(3)` vs `varchar(3)` mismatch got through the suite. `ddl-auto: validate` against real Postgres caught it at boot, which is the second half of the reason it is set that way |
 | Flyway from M0 | A demo whose schema is `ddl-auto: update` is not a demo of production practice | Never |
 
 ## Audit event (shape planned for M1)

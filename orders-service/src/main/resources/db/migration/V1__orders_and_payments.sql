@@ -4,7 +4,7 @@ create table orders (
     sku           varchar(64)  not null,
     quantity      integer      not null check (quantity > 0),
     amount_cents  bigint       not null check (amount_cents >= 0),
-    currency      char(3)      not null,
+    currency      varchar(3)   not null,
     status        varchar(16)  not null,
     created_at    timestamptz  not null
 );
