@@ -164,13 +164,21 @@ Tests use H2 in PostgreSQL mode and need no containers. Testcontainers-based int
 ## Repo layout
 
 ```
-gateway/         Spring Boot gateway — MCP server, policy, audit, cost (M0: registry + health)
+gateway/         The gateway — MCP server, OpenAPI tool registry, idempotency, audit
 orders-service/  Sample upstream — Orders & Payments with idempotent, documented endpoints
-scripts/         smoke.sh and friends
-docs/            Architecture notes and milestone write-ups
+scripts/         smoke.sh (upstream) and mcp_smoke.sh (MCP protocol + audit trail)
+deploy/          Fly.io manifests and DEPLOY.md — untested; see below
+docs/            Architecture notes and decisions
 Dockerfile       One multi-stage recipe, MODULE build-arg selects the module
 docker-compose.yml  The whole local stack
 ```
+
+## Hosting
+
+Not hosted yet, on purpose: M1 has no authentication, and publishing an unauthenticated
+agent gateway to demonstrate *governed* agent access would undercut the argument. The
+public demo ships with M2's API keys and scopes. [`deploy/DEPLOY.md`](deploy/DEPLOY.md)
+has the intended shape and an honest list of what will bite.
 
 ## Roadmap
 

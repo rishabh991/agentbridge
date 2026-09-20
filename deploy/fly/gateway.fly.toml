@@ -1,0 +1,42 @@
+# AgentBridge gateway on Fly.io.
+# Untested: written from the Fly docs, never run — no Fly account exists yet.
+# Deploy with:  fly deploy -c deploy/fly/gateway.fly.toml --build-arg MODULE=gateway
+app = "agentbridge-gateway"
+primary_region = "sin"
+
+[build]
+  dockerfile = "../../Dockerfile"
+
+[build.args]
+  MODULE = "gateway"
+
+[env]
+  PORT = "8080"
+  # No broker on a 512 MB machine: the direct sink writes audit rows straight to
+  # Postgres. Same table, same rows — see the audit section of the README.
+  AUDIT_SINK = "direct"
+  ORDERS_BASE_URL = "http://agentbridge-orders.internal:8081"
+  JAVA_OPTS = "-XX:MaxRAMPercentage=70 -XX:+UseSerialGC -Xss512k"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "60s"
+    method = "GET"
+    path = "/actuator/health/liveness"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+# Secrets, set once with `fly secrets set`:
+#   GATEWAY_DB_URL      jdbc:postgresql://<neon-host>/<db>?sslmode=require
+#   GATEWAY_DB_USER
+#   GATEWAY_DB_PASSWORD

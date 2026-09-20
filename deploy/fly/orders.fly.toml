@@ -1,0 +1,30 @@
+# The sample upstream. Internal only — it has no auth of its own and is not meant
+# to be reachable from the internet; the gateway reaches it over .internal DNS.
+# Untested: written from the Fly docs, never run.
+# Deploy with:  fly deploy -c deploy/fly/orders.fly.toml --build-arg MODULE=orders-service
+app = "agentbridge-orders"
+primary_region = "sin"
+
+[build]
+  dockerfile = "../../Dockerfile"
+
+[build.args]
+  MODULE = "orders-service"
+
+[env]
+  PORT = "8081"
+  JAVA_OPTS = "-XX:MaxRAMPercentage=70 -XX:+UseSerialGC -Xss512k"
+
+[[services]]
+  internal_port = 8081
+  protocol = "tcp"
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+# Secrets:
+#   ORDERS_DB_URL, ORDERS_DB_USER, ORDERS_DB_PASSWORD  (same Neon instance, separate schema)
