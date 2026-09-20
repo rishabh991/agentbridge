@@ -54,7 +54,35 @@ converter demands raw bytes and throws `Only String, Bytes, or byte[] supported`
 symptom was an empty audit trail while every tool call succeeded, which is exactly the
 failure mode an audit system must never have. The smoke script now fails on an empty trail.
 
-## Audit event (as implemented in M1)
+
+## Decisions added in M2
+
+| Decision | Why | Revisit when |
+|---|---|---|
+| Only a key's SHA-256 hash is stored | A database dump must not be a set of working credentials. A key can be replaced, never recovered | Never |
+| The required scope is derived from the tool, not configured | A tool imported from a new spec is governed the moment it appears; a configured list leaves new tools unprotected until somebody remembers them | A tool needs a scope its method does not imply — then the derivation gains an override, not a replacement |
+| Scope denial happens before the upstream call | The upstream should never see a request the policy would refuse, and the audit row should say `denied` rather than describing an upstream response | Never |
+| 4xx responses do not count toward the circuit breaker | A 409 is the upstream working correctly. Counting it opens the breaker because an agent asked for something that does not exist | Never |
+| Rate limiting is in-process | A shared limiter needs Redis, which the demo does not run. Per-instance limits are a real constraint, so they are documented rather than implied away | The gateway runs more than one replica |
+| Kafka publish failure falls back to a direct Postgres write | M1 logged and dropped. An audit trail with a hole in it is worse than none, because it is trusted | Never |
+| Unprojectable events go to a dead-letter topic after 3 retries | M1 blocked the partition forever, turning one poison event into a silent gap in everything behind it | Never |
+| `/error` dispatches are permitted, not secured | See below | Never |
+
+The one that bit during M2: a key with a valid credential but the wrong scope was answered
+**401 instead of 403** against the running container, while the MockMvc test for the same
+rule reported 403. Spring Security does respond 403 — and then `sendError` makes the servlet
+container re-dispatch to `/error`. That second dispatch was matched by `anyRequest().authenticated()`,
+by which point the request's security context had been cleared, so it was re-evaluated as
+anonymous and the considered 403 was overwritten with a misleading 401. MockMvc performs no
+error dispatch, which is exactly why it could not see this. The fix is one line —
+`.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()` — and the lesson is the test:
+`AccessDeniedStatusTest` now runs against a real port, because MockMvc is not the deployment.
+
+A second, quieter one: `UpstreamCircuitBreakers` registered a state-transition listener on
+every call rather than once per breaker, leaking listeners for the life of the process. It
+now attaches on registry entry creation.
+
+## Audit event (as implemented in M1, extended in M2)
 
 ```json
 {
@@ -79,7 +107,10 @@ Arguments are redacted by default — the row carries `{"redacted": true, "field
 rather than values. M2 adds a per-tool allowlist of fields that may be logged in full,
 because an audit log that contains card numbers is a liability, not a control.
 
-`apiKeyId` is `anonymous` until M2 issues keys. `provider`, `tokensIn`, `tokensOut` and
+`apiKeyId` carries the key that made the call from M2 onward, including on `denied` and
+`rate_limited` rows; `anonymous` appears only on rows written before keys existed.
+The `outcome` set is `ok`, `denied`, `rate_limited`, `upstream_error`,
+`upstream_unavailable` and `gateway_error`. `provider`, `tokensIn`, `tokensOut` and
 `costMicros` are carried from M1 but stay zero until M3 wires the provider side: the shape
 is fixed now on purpose, because changing an audit schema after the fact is how audit
 trails lose their value.

@@ -47,7 +47,7 @@ jobs:
       - name: Smoke test (upstream)
         run: ./scripts/smoke.sh
 
-      - name: Smoke test (MCP protocol + audit trail)
+      - name: Smoke test (MCP protocol, scopes, rate limits, audit trail)
         run: ./scripts/mcp_smoke.sh
 
       - name: Dump logs on failure

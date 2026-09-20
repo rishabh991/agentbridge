@@ -75,6 +75,10 @@ services:
       GATEWAY_DB_PASSWORD: ${POSTGRES_PASSWORD:-agentbridge}
       KAFKA_BOOTSTRAP_SERVERS: redpanda:29092
       AUDIT_SINK: ${AUDIT_SINK:-kafka}
+      # Pinned so the stack comes up with known keys. A real deployment sets these
+      # to secrets; leaving the admin key unset generates one per boot into the log.
+      AGENTBRIDGE_ADMIN_KEY: ${AGENTBRIDGE_ADMIN_KEY:-ab_local-admin-key}
+      AGENTBRIDGE_GUEST_KEY: ${AGENTBRIDGE_GUEST_KEY:-ab_local-guest-key}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ports:
       - "8080:8080"

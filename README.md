@@ -4,7 +4,7 @@
 
 **A governed MCP gateway for existing Spring services.** Point it at an OpenAPI spec and get auth-scoped, rate-limited, audited, cost-tracked tools that Claude, Bedrock or a local model can call — without rewriting the service underneath.
 
-> **Status: M1 — tools are live.** Point the gateway at an OpenAPI spec and it serves the operations as MCP tools, calls them on the upstream, and audits every call through Kafka into Postgres. Governance (API keys, scopes, rate limits), the UI and the Python agent side land in M2–M4; the roadmap below says exactly what is and is not wired, and `GET /api/v1/info` reports the same thing at runtime.
+> **Status: M2 — governed.** Point the gateway at an OpenAPI spec and it serves the operations as MCP tools behind API keys, per-tool scopes, per-key rate limits and upstream circuit breakers, auditing every call — allowed, denied or rate-limited — through Kafka into Postgres. The chat UI, cost tracking and the Python agent side land in M3–M4; the roadmap below says exactly what is and is not wired, and `GET /api/v1/info` reports the same thing at runtime.
 
 ---
 
@@ -60,10 +60,10 @@ flowchart LR
     reg -.->|imports /v3/api-docs| orders
 
     classDef planned stroke-dasharray: 5 5;
-    class pol,meter,ui,evals planned;
+    class meter,ui,evals planned;
 ```
 
-Dashed = not implemented yet (M2+). Solid today: the MCP server, the OpenAPI tool registry, idempotency and upstream calls, the audit stream through Kafka into Postgres, and the orders upstream behind it.
+Dashed = not implemented yet (M3+). Solid today: the MCP server, the OpenAPI tool registry, the policy layer (keys, scopes, rate limits), idempotency and circuit-broken upstream calls, and the audit stream through Kafka into Postgres.
 
 ## Quickstart
 
@@ -113,15 +113,14 @@ Three decisions worth the words:
 
 ### Connecting a client
 
-The MCP endpoint is streamable HTTP at `http://localhost:8080/mcp`. For Claude Code:
+The MCP endpoint is streamable HTTP at `http://localhost:8080/mcp` and requires an API key. For Claude Code:
 
 ```bash
-claude mcp add --transport http agentbridge http://localhost:8080/mcp
+claude mcp add --transport http agentbridge http://localhost:8080/mcp \
+  --header "Authorization: Bearer ab_local-guest-key"
 ```
 
-Any MCP client works — `scripts/mcp_smoke.sh` is a 60-line `curl` client if you want to see the raw protocol.
-
-> **No auth yet.** M1 has no API keys and no scopes: anything that can reach the endpoint can call every tool, including the mutating ones. That is what M2 is for. Do not expose this build to a network you do not control.
+`ab_local-guest-key` is the read-only key the local stack seeds; swap in `ab_local-admin-key` if you want the agent to be able to place orders. Any MCP client works — `scripts/mcp_smoke.sh` is a `curl` client if you want to see the raw protocol.
 
 ### Every call is audited
 
@@ -130,6 +129,56 @@ Each tool call produces exactly one audit event — success, upstream error or g
 **Arguments are redacted by default**: the audit row records which fields were sent, never their values. An audit log that quietly accumulates customer identifiers and payment amounts is a liability, not a control — M2 adds a per-tool allowlist for fields that may be logged in full.
 
 If the host cannot spare memory for a broker, set `AUDIT_SINK=direct` and the gateway writes to Postgres itself. Same table, same rows, one less moving part — the README promised that fallback at M0 and it is real.
+
+## What M2 adds: the governance layer
+
+Every tool call now passes three gates before it reaches an upstream, and produces an audit row whichever gate stops it.
+
+### 1. API keys
+
+Keys are `ab_`-prefixed random secrets. **Only the SHA-256 hash is stored** — a leaked database is not a set of working credentials, and a key can be replaced but never recovered. A key is shown exactly once, when it is created:
+
+```bash
+curl -X POST localhost:8080/api/v1/keys -H 'Authorization: Bearer ab_local-admin-key' \
+  -H 'Content-Type: application/json' \
+  -d '{"label":"reporting-agent","scopes":["orders:read"],"requestsPerMinute":60}'
+```
+
+Present it as `Authorization: Bearer <key>` or `X-API-Key: <key>`. `/api/v1/info` and health stay open so a demo page and a load balancer need no credential; everything else does.
+
+### 2. Per-tool scopes
+
+The scope a tool requires is **derived, not configured**: `<upstream>:read` for safe operations, `<upstream>:write` for mutating ones, with `*:read` / `*:write` as wildcards and `admin` as the master key. Derivation is the point — a newly imported tool is governed the moment it appears, rather than sitting unprotected until somebody remembers to write a rule for it.
+
+```
+orders_listCatalogItems   requires orders:read
+orders_createOrder        requires orders:write
+```
+
+A read-only key calling `orders_createOrder` is refused **before the upstream is touched**, and the model is told why:
+
+```json
+{"error":"denied","message":"This key does not hold the scope 'orders:write' that tool 'orders_createOrder' requires."}
+```
+
+### 3. Per-key rate limits
+
+Each key carries its own `requestsPerMinute`. Over it, the call is refused with `rate_limited` and the model is told the number, so it can back off rather than guess.
+
+> **Per instance.** The limiter is in-process, so two gateway replicas allow twice the rate. A shared limiter needs Redis, which the demo does not run. Stated rather than hidden.
+
+### Circuit breakers
+
+Each upstream gets a breaker: 8+ calls, >50% failures or >70% slow calls (over 5s) opens it for 20 seconds, then three trial calls decide whether to close it. While open, tools return `upstream_unavailable` immediately instead of queueing behind a dying service — otherwise every retrying agent becomes a load generator aimed at the upstream that is already struggling.
+
+**4xx responses are not failures.** A 404 or a 409 is the upstream working correctly and saying no; counting those would open the breaker because an agent asked for something that does not exist.
+
+### Audit, tightened
+
+- Every row now carries **which key made the call** — including denials and rate-limited calls, which are exactly the rows you want attributed.
+- Failed Kafka publishes **fall back to a direct Postgres write** rather than being logged and dropped. An audit trail with a hole in it is worse than none, because it is trusted.
+- An event that cannot be projected goes to `agentbridge.audit.DLT` after three retries instead of blocking the partition — M1's behaviour turned one poison event into a silent gap in the whole trail.
+- Argument values remain redacted to field names, with a **per-tool allowlist** for fields that are safe and useful (`orders_capturePayment` logs `id` and `amountCents`; `customerId` stays a name everywhere).
 
 ## The upstream is not a toy
 
@@ -175,10 +224,11 @@ docker-compose.yml  The whole local stack
 
 ## Hosting
 
-Not hosted yet, on purpose: M1 has no authentication, and publishing an unauthenticated
-agent gateway to demonstrate *governed* agent access would undercut the argument. The
-public demo ships with M2's API keys and scopes. [`deploy/DEPLOY.md`](deploy/DEPLOY.md)
-has the intended shape and an honest list of what will bite.
+Not hosted yet. M2 removed the blocker — the gateway now has keys, scopes and rate limits,
+so it is safe to expose — but deploying needs a Fly.io account and a Neon database that do
+not exist yet. [`deploy/DEPLOY.md`](deploy/DEPLOY.md) has the manifests, the runbook and an
+honest list of what will bite; the public demo lands with a read-only guest key and a hard
+daily cost cap.
 
 ## Roadmap
 
@@ -186,8 +236,8 @@ has the intended shape and an honest list of what will bite.
 |---|---|---|
 | **M0** | Repo, compose stack, realistic upstream, architecture docs | ✅ done |
 | **M1** | OpenAPI → MCP tools over streamable HTTP; derived idempotency keys; every call audited to Kafka + Postgres | ✅ done |
-| **M2** | API keys, per-tool RBAC scopes, per-key rate limits, circuit breakers, dead-letter for failed audits, per-tool argument allowlist | next |
-| **M3** | Chat UI, live tool-call and audit stream over SSE, per-key/tool/provider cost tracking | planned |
+| **M2** | API keys, per-tool RBAC scopes, per-key rate limits, circuit breakers, dead-letter for failed audits, per-tool argument allowlist | ✅ done |
+| **M3** | Chat UI, live tool-call and audit stream over SSE, per-key/tool/provider cost tracking | next |
 | **M4** | Python agents (LangGraph + Claude Agent SDK) against the gateway, pytest evals harness, evals dashboard | planned |
 | **M5** | End-to-end OTel tracing, Testcontainers integration tests, k8s manifests + HPA, published load-test numbers | planned |
 | **M6** | Public demo with a read-only guest key, cost cap, and a 2-minute walkthrough | planned |

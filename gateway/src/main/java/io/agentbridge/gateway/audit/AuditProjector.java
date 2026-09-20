@@ -6,7 +6,14 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
-/** Consumes the audit topic and projects it into Postgres. */
+/**
+ * Consumes the audit topic and projects it into Postgres.
+ *
+ * <p>Retries and the dead-letter topic are configured centrally in
+ * {@link io.agentbridge.gateway.KafkaConfiguration}: an event that cannot be
+ * projected after a few attempts goes to {@code <topic>.DLT} rather than blocking
+ * the partition behind it forever, which is what M1 did.
+ */
 @Component
 @ConditionalOnProperty(name = "agentbridge.audit.sink", havingValue = "kafka", matchIfMissing = true)
 public class AuditProjector {
@@ -21,11 +28,13 @@ public class AuditProjector {
 
     @KafkaListener(topics = "${agentbridge.audit.topic}", groupId = "${agentbridge.audit.consumer-group}")
     public void project(AuditEvent event) {
-        try {
-            store.save(event);
-        } catch (Exception e) {
-            // M2 adds the dead-letter topic this deserves.
-            log.error("could not project audit event {}: {}", event.eventId(), e.getMessage());
-        }
+        store.save(event);
+    }
+
+    /** Anything that lands here has already failed its retries; record that it exists. */
+    @KafkaListener(topics = "${agentbridge.audit.topic}.DLT", groupId = "${agentbridge.audit.consumer-group}-dlt")
+    public void deadLettered(AuditEvent event) {
+        log.error("audit event {} ({} on tool {}) could not be projected and is on the dead-letter topic",
+                event.eventId(), event.outcome(), event.tool());
     }
 }

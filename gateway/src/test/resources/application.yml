@@ -29,3 +29,8 @@ agentbridge:
     topic: agentbridge.audit.test
     consumer-group: test
     log-arguments: false
+    argument-allowlist:
+      orders_capturePayment: [id, amountCents]
+  security:
+    bootstrap-admin-key: ab_test-admin-key
+    bootstrap-guest-key: ab_test-guest-key

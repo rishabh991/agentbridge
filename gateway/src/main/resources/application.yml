@@ -39,13 +39,14 @@ spring:
       server:
         enabled: true
         name: agentbridge
-        version: 0.2.0
+        version: 0.3.0
         type: SYNC
         protocol: STREAMABLE
         instructions: >
           Tools generated from the OpenAPI specs of the services AgentBridge fronts.
           Mutating tools carry an idempotency key derived from their arguments, so an
-          identical retry is safe. Every call is audited.
+          identical retry is safe. Every call is authorised against the presented API
+          key's scopes, rate limited per key, and audited.
         streamable-http:
           mcp-endpoint: /mcp
 
@@ -53,7 +54,7 @@ server:
   port: ${PORT:8080}
 
 agentbridge:
-  version: 0.2.0-SNAPSHOT
+  version: 0.3.0-SNAPSHOT
   upstreams:
     - name: orders
       base-url: ${ORDERS_BASE_URL:http://localhost:8081}
@@ -67,6 +68,19 @@ agentbridge:
     consumer-group: agentbridge-audit-projector
     # Arguments are recorded as field names only unless this is turned on.
     log-arguments: ${AUDIT_LOG_ARGUMENTS:false}
+    # Per-tool exceptions: fields whose values may be recorded in full because they
+    # are useful in a trail and carry nothing sensitive. Everything else stays a name.
+    argument-allowlist:
+      orders_getOrder: [id]
+      orders_listPayments: [id]
+      orders_capturePayment: [id, amountCents]
+      orders_createOrder: [sku, quantity]
+  security:
+    # Pin these in any real deployment. If the admin key is left blank, one is
+    # generated per boot and printed to the log once — fine for a laptop, not for a
+    # deployment, and the README says so.
+    bootstrap-admin-key: ${AGENTBRIDGE_ADMIN_KEY:}
+    bootstrap-guest-key: ${AGENTBRIDGE_GUEST_KEY:}
 
 management:
   endpoints:

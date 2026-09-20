@@ -31,4 +31,5 @@ public record AuditEvent(
     public static final String OUTCOME_OK = "ok";
     public static final String OUTCOME_UPSTREAM_ERROR = "upstream_error";
     public static final String OUTCOME_GATEWAY_ERROR = "gateway_error";
+    public static final String OUTCOME_UPSTREAM_UNAVAILABLE = "upstream_unavailable";
 }

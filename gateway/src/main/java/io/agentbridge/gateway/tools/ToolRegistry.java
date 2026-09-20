@@ -3,6 +3,8 @@ package io.agentbridge.gateway.tools;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentbridge.gateway.GatewayProperties;
 import io.agentbridge.gateway.audit.AuditService;
+import io.agentbridge.gateway.policy.ToolPolicy;
+import io.agentbridge.gateway.policy.UpstreamCircuitBreakers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -31,16 +33,21 @@ public class ToolRegistry {
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
     private final AuditService audit;
+    private final ToolPolicy policy;
+    private final UpstreamCircuitBreakers breakers;
 
     private volatile List<UpstreamToolCallback> callbacks = List.of();
 
     ToolRegistry(GatewayProperties properties, OpenApiToolFactory factory, RestClient.Builder builder,
-                 ObjectMapper objectMapper, AuditService audit) {
+                 ObjectMapper objectMapper, AuditService audit, ToolPolicy policy,
+                 UpstreamCircuitBreakers breakers) {
         this.properties = properties;
         this.factory = factory;
         this.restClient = builder.build();
         this.objectMapper = objectMapper;
         this.audit = audit;
+        this.policy = policy;
+        this.breakers = breakers;
     }
 
     public synchronized List<UpstreamToolCallback> refresh() {
@@ -54,7 +61,8 @@ public class ToolRegistry {
                 }
                 var tools = factory.toolsFrom(upstream.name(), document);
                 tools.forEach(tool -> imported.add(
-                        new UpstreamToolCallback(tool, upstream.baseUrl(), restClient, objectMapper, audit)));
+                        new UpstreamToolCallback(tool, upstream.baseUrl(), restClient, objectMapper, audit,
+                                policy, breakers)));
                 log.info("registered {} tools from upstream {}", tools.size(), upstream.name());
             } catch (Exception e) {
                 log.error("could not import tools from upstream {} at {}: {}",
