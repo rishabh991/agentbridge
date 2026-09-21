@@ -4,6 +4,8 @@
 
 **A governed MCP gateway for existing Spring services.** Point it at an OpenAPI spec and get auth-scoped, rate-limited, audited, cost-tracked tools that Claude, Bedrock or a local model can call — without rewriting the service underneath.
 
+**Live demo:** https://agentbridge-gateway.onrender.com/api/v1/info · MCP endpoint `https://agentbridge-gateway.onrender.com/mcp`
+
 > **Status: M2 — governed.** Point the gateway at an OpenAPI spec and it serves the operations as MCP tools behind API keys, per-tool scopes, per-key rate limits and upstream circuit breakers, auditing every call — allowed, denied or rate-limited — through Kafka into Postgres. The chat UI, cost tracking and the Python agent side land in M3–M4; the roadmap below says exactly what is and is not wired, and `GET /api/v1/info` reports the same thing at runtime.
 
 ---
@@ -113,14 +115,25 @@ Three decisions worth the words:
 
 ### Connecting a client
 
-The MCP endpoint is streamable HTTP at `http://localhost:8080/mcp` and requires an API key. For Claude Code:
+The MCP endpoint is streamable HTTP and requires an API key. Point Claude Code at the live
+demo with the read-only guest key:
 
 ```bash
-claude mcp add --transport http agentbridge http://localhost:8080/mcp \
-  --header "Authorization: Bearer ab_local-guest-key"
+claude mcp add --transport http agentbridge https://agentbridge-gateway.onrender.com/mcp \
+  --header "Authorization: Bearer A4HpX+A7L8Kg/fyH0HssWxFywjuf1ijCJ3Z6oK18F+k="
 ```
 
-`ab_local-guest-key` is the read-only key the local stack seeds; swap in `ab_local-admin-key` if you want the agent to be able to place orders. Any MCP client works — `scripts/mcp_smoke.sh` is a `curl` client if you want to see the raw protocol.
+That key holds `*:read`, so an agent can list the catalogue and read orders but is refused
+`orders_createOrder` — try it and the model is told exactly which scope it lacks. It is
+capped at 60 tool calls a minute, and every call it makes is on the audit trail.
+
+Running locally instead, the same command against `http://localhost:8080/mcp` with
+`ab_local-guest-key` (or `ab_local-admin-key` to allow writes). Any MCP client works —
+`scripts/mcp_smoke.sh` is a `curl` client if you want to see the raw protocol.
+
+> **It is on a free tier.** Both services sleep after 15 minutes idle, so the first request
+> after a quiet spell takes about a minute to wake them — JVM start on top of the platform's
+> cold start. It is a demo, not a service level.
 
 ### Every call is audited
 
@@ -224,7 +237,8 @@ docker-compose.yml  The whole local stack
 
 ## Hosting
 
-Not hosted yet; `render.yaml` deploys it to Render's free tier, and
+Deployed to Render's free tier from `render.yaml` (Singapore), with Neon for Postgres and
+no broker at all — `AUDIT_SINK=direct` writes audit rows straight to Postgres.
 [`deploy/DEPLOY.md`](deploy/DEPLOY.md) has the runbook and an honest list of what the free
 plan forces. Two of those constraints changed the code rather than being worked around:
 
