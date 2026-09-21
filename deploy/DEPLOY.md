@@ -11,13 +11,20 @@ every commit by CI.
 
 ## Render (the chosen path)
 
-### What Rishabh does
+### How it was actually done (2026-09-21)
 
-1. Sign up at https://render.com with **Continue with GitHub** and authorise it for the
-   `agentbridge` repository. (Account creation and OAuth grants are his; Claude cannot do
-   either.)
-2. Have the Neon connection string on the clipboard: Neon console → project `agentbridge`
-   → Connect → copy the URI.
+The **Public Git Repository** path, not the GitHub connection. The repo is public, so
+Render can read it by URL and no OAuth grant is needed — one fewer thing that only the
+account owner can do. The cost is that `autoDeployTrigger: commit` does nothing: pushes do
+not redeploy by themselves. Connect the GitHub account later if auto-deploy is wanted.
+
+Blueprint name `agentbridge`, branch `main`, and the six `sync: false` database values
+typed in by hand.
+
+**Use the direct Neon endpoint, not the pooled one.** Neon's pooler runs PgBouncer in
+transaction mode, which does not hold the session-level advisory locks Flyway takes out
+during migration. Turn "Connection pooling" off in the Connect dialog before copying the
+string.
 
 ### What the blueprint does
 
