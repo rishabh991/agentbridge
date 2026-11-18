@@ -116,11 +116,11 @@ Three decisions worth the words:
 ### Connecting a client
 
 The MCP endpoint is streamable HTTP and requires an API key. Point Claude Code at the live
-demo with the read-only guest key:
+demo with a read-only guest key (ask me for one):
 
 ```bash
 claude mcp add --transport http agentbridge https://agentbridge-gateway.onrender.com/mcp \
-  --header "Authorization: Bearer A4HpX+A7L8Kg/fyH0HssWxFywjuf1ijCJ3Z6oK18F+k="
+  --header "Authorization: Bearer <guest-key>"
 ```
 
 That key holds `*:read`, so an agent can list the catalogue and read orders but is refused
